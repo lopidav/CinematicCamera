@@ -10,6 +10,7 @@ namespace CinematicCameraNS
     {
 		
 		public static CinematicCamera? _instance;
+
 		public void Awake()
 		{
 			_instance = this;		
@@ -68,6 +69,44 @@ namespace CinematicCameraNS
 		private static bool _LimitlessZoom = false;
 		private static float targetFOV = 32f;
 		private static bool _FreeMoveCamera = false;
+		private static bool lockingOntoLast = false;
+		private static GameCard? lockedOntoCard = null;
+		private static bool _SlowerMovement = false;
+		public static bool SlowerMovement
+		{
+			get {return _SlowerMovement;}
+			set
+			{
+				if (_SlowerMovement == value) return;
+				if (value)
+				{
+					GameCamera.instance.MoveSpeed = 0.1f;
+				}
+				else
+				{
+					GameCamera.instance.MoveSpeed = 1f;
+				}
+				_SlowerMovement = value;
+			}
+		}
+		private static bool _SlowerZoom = false;
+		public static bool SlowerZoom
+		{
+			get {return _SlowerZoom;}
+			set
+			{
+				if (_SlowerZoom == value) return;
+				if (value)
+				{
+					GameCamera.instance.ZoomSpeed = 0.1f;
+				}
+				else
+				{
+					GameCamera.instance.ZoomSpeed = 1f;
+				}
+				_SlowerZoom = value;
+			}
+		}
 		public static Action onFreeMoveCameraEnd;
 		public static bool FreeMoveCamera
 		{
@@ -90,6 +129,9 @@ namespace CinematicCameraNS
 		private static bool _FOVZoom = false;
 		private static bool _DisableCursorVisuals = false;
 		private static bool _DisableCameraBounds = false;
+		private float targetRotateY = 0;
+		private float targetRotateX = 0;
+
 		public void Update()
 		{
 			if (FreeMoveCamera)
@@ -102,8 +144,11 @@ namespace CinematicCameraNS
 				{
 					Vector2 mouseVelocity = InputController.instance.ClampedMousePosition() - PreviosMousePosition;
 					Log(mouseVelocity.ToString());
-					
-					GameCamera.instance.transform.Rotate(-mouseVelocity.y * 0.3f, mouseVelocity.x * 0.3f, 0);
+					targetRotateY += -mouseVelocity.y * 0.3f;
+					targetRotateX += mouseVelocity.x * 0.3f;
+					GameCamera.instance.transform.Rotate( Mathf.Lerp(0, targetRotateY, 0.1f), Mathf.Lerp(0, targetRotateX, 0.1f), 0);
+					targetRotateY -= Mathf.Lerp(0, targetRotateY, 0.1f);
+					targetRotateX -= Mathf.Lerp(0, targetRotateX, 0.1f);
 					PreviosMousePosition = InputController.instance.ClampedMousePosition();
 				}
 			}
@@ -129,7 +174,7 @@ namespace CinematicCameraNS
 			// 	Cursor.visible = true;
 			// }
 			// else 
-			if (_DisableCursorVisuals && !GameCanvas.instance.ModalIsOpen && WorldManager.instance.CurrentGameState == WorldManager.GameState.Playing && Cursor.visible)
+			if (_DisableCursorVisuals && (!GameCanvas.instance.ModalIsOpen || !ModalScreen.instance.transform.Find("Modal").gameObject.activeSelf) && WorldManager.instance.CurrentGameState == WorldManager.GameState.Playing && Cursor.visible)
 			{
 				Cursor.visible = false;
 			}
@@ -245,15 +290,54 @@ namespace CinematicCameraNS
 			FreeMoveCameraButton.StartDragging += delegate
 			{
 				ModalScreen.instance.transform.Find("Modal").gameObject.SetActive(false);
+				ModalScreen.instance.transform.Find("FadeImage").gameObject.SetActive(false);
 				FreeMoveCamera = true;
 				Log("started dragg");
 			};
 			onFreeMoveCameraEnd = delegate
 			{
 				ModalScreen.instance.transform.Find("Modal").gameObject.SetActive(true);
+				ModalScreen.instance.transform.parent.GetChild(0).gameObject.SetActive(true);
 				Log("end dragg");
 			};
 			CameraMenu.AddOption("Reset angle", delegate {GameCamera.instance.transform.rotation = Quaternion.Euler(80f, 0f ,0f);});
+
+			CustomButton SlowerMovementBtn = UnityEngine.Object.Instantiate(PrefabManager.instance.ButtonPrefab);
+			SlowerMovementBtn.transform.SetParent(CameraMenu.ButtonParent);
+			SlowerMovementBtn.transform.localPosition = Vector3.zero;
+			SlowerMovementBtn.transform.localScale = Vector3.one;
+			SlowerMovementBtn.transform.localRotation = Quaternion.identity;
+			SlowerMovementBtn.TextMeshPro.text = $"Switch to {(!SlowerMovement ? "Slower" : "Faster")} move speed";
+			SlowerMovementBtn.Clicked += delegate
+			{
+				SlowerMovement = !SlowerMovement;//0.324
+				SlowerMovementBtn.TextMeshPro.text = $"Switch to {(!SlowerMovement ? "Slower" : "Faster")} move speed";
+			};
+			CustomButton SlowerZoomBtn = UnityEngine.Object.Instantiate(PrefabManager.instance.ButtonPrefab);
+			SlowerZoomBtn.transform.SetParent(CameraMenu.ButtonParent);
+			SlowerZoomBtn.transform.localPosition = Vector3.zero;
+			SlowerZoomBtn.transform.localScale = Vector3.one;
+			SlowerZoomBtn.transform.localRotation = Quaternion.identity;
+			SlowerZoomBtn.TextMeshPro.text = $"Switch to {(!SlowerZoom ? "Slower" : "Faster")} zoom speed";
+			SlowerZoomBtn.Clicked += delegate
+			{
+				SlowerZoom = !SlowerZoom;//0.324
+				SlowerZoomBtn.TextMeshPro.text = $"Switch to {(!SlowerZoom ? "Slower" : "Faster")} zoom speed";
+			};
+
+			CustomButton lockOnACard = UnityEngine.Object.Instantiate(PrefabManager.instance.ButtonPrefab);
+			lockOnACard.transform.SetParent(CameraMenu.ButtonParent);
+			lockOnACard.transform.localPosition = Vector3.zero;
+			lockOnACard.transform.localScale = Vector3.one;
+			lockOnACard.transform.localRotation = Quaternion.identity;
+			lockOnACard.TextMeshPro.text = $"Lock on the last made card";
+			lockOnACard.Clicked += delegate
+			{
+				lockingOntoLast = !lockingOntoLast;
+				lockedOntoCard = lockingOntoLast ? WorldManager.instance.AllCards.LastOrDefault() : null;
+				lockOnACard.TextMeshPro.text = !lockingOntoLast ? $"Lock on the last made card" : $"Unlock from a card";
+			};
+
 			
 
 			//GameObject field =  UnityEngine.Object.Instantiate(DebugScreen.instance.CardRect.gameObject.GetComponentInChildren<TMPro.TMP_InputField>().gameObject, CameraMenu.ButtonParent);
@@ -371,6 +455,68 @@ namespace CinematicCameraNS
 			return false;
 		}
 		
+		[HarmonyPatch(typeof(WorldManager), "Update")]
+		[HarmonyPrefix]
+		private static void WorldManager_Update_Prefix(out Vector3? __state)
+		{
+			if (lockingOntoLast) {
+				if (lockedOntoCard == null || lockedOntoCard.Destroyed)
+				{
+					lockedOntoCard = WorldManager.instance.AllCards.LastOrDefault();
+				}
+				// else
+				// {
+				// 	var lastOne = WorldManager.instance.AllCards.LastOrDefault();
+				// 	if (lastOne != null && Vector3.Distance(lastOne.Position, lockedOntoCard.Position) < 0.2f)
+				// 	lockedOntoCard = lastOne;
+				// }
+				__state = lockedOntoCard.transform.position*1;
+			} else __state = null;
+		}
+		[HarmonyPatch(typeof(WorldManager), "Update")]
+		[HarmonyPostfix]
+		private static void WorldManager_Update_Postfix(Vector3? __state)
+		{
+			if (lockingOntoLast) {
+				if (lockedOntoCard == null || lockedOntoCard.Destroyed)
+				{
+					lockedOntoCard = WorldManager.instance.AllCards.LastOrDefault();
+				}
+				// else
+				// {
+				// 	var lastOne = WorldManager.instance.AllCards.LastOrDefault();
+				// 	if (lastOne != null && Vector3.Distance(lastOne.Position, lockedOntoCard.Position) < 0.2f)
+				// 	lockedOntoCard = lastOne;
+				// }
+				if (lockedOntoCard != null && __state != null)
+				{
+					GameCamera.instance.cameraTargetPosition += (Vector3)(lockedOntoCard.Position - __state);
+					// CinematicCamera.Log((lockedOntoCard.Position - __state).ToString());
+				}
+				// if ()
+			}
+		}
+		[HarmonyPatch(typeof(WorldManager), nameof(WorldManager.CreateCard)
+		, new Type[]
+		{
+			typeof(Vector3)
+			, typeof(CardData)
+			, typeof(bool)
+			, typeof(bool)
+			, typeof(bool)
+			, typeof(bool)
+		})]
+		private static void WorldManager_CreateCard_Postfix(Vector3 position, CardData __result)
+		{
+			if (lockingOntoLast && __result.MyGameCard != null)
+			{
+				if (lockedOntoCard != null && (Vector3.Distance(position, lockedOntoCard.Position) < 1f || Vector3.Distance(position, lockedOntoCard.GetRootCard().Position) < 1f))
+				{
+					lockedOntoCard = __result.MyGameCard;
+				}
+
+			}
+		}
 	}
 	
 }
